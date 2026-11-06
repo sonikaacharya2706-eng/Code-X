@@ -1,0 +1,11 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Database files & transient test databases
+*.db
+*.db.tmp
+test_workspace_32/
