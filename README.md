@@ -153,6 +153,23 @@ The torture tool runs consecutive kill cycles using random delays and verifies d
 Now kill the recovery three times:
 for %d in (5 15 30) do (copy /y t\k.db t\r.db >nul & start /b kvdb.exe open t\r.db & powershell -c "Start-Sleep -Milliseconds %d" & taskkill /F /IM kvdb.exe)
 
+
+## Part 1: Kill during writes (you’ve done this)
+cd D:\SIT
+del t\k.db
+del t\acks.txt
+dir t\k.db
+(for /l %i in (1,1,10000000) do @echo %i put k%i run3_%i) | kvdb.exe serve t\k.db > t\acks.txt
+
+Window 2, after 1 or 2 seconds:
+taskkill /F /IM kvdb.exe
+
+## Part 2: Save the damaged file, then kill during recovery
+Window 2:
+copy /y t\k.db t\k.backup
+kvdb.exe open t\k.backup
+find /c "ACK" t\acks.txt
+
 ## Part 3: 
 Recover for real and verify
 
