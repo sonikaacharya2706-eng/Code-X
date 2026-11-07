@@ -1,13 +1,39 @@
-# PROMPTS.md — AI Interaction & Prompt Log
+# AI Prompt Log
 
-This log documents all prompts sent to AI engineering assistants during the hackathon in chronological order, as required by Section 9 of the competition rules.
+This file keeps the prompts used during the hackathon, in order. The original wording is preserved inside each entry. Times are approximate where noted; when the time was not recorded, it is marked that way rather than guessed.
+
+## Draft Debugging Prompt
+
+The following is a ready-to-use prompt about a specific issue spotted in `KVdb.go`. It is a draft, not a prompt already sent; after using it, add the actual interaction to the log below.
+
+```
+While reviewing our Go key-value database, I noticed that `Batch` silently treats a misspelled operation type as a put. For example, `Batch([]Op{{Type: "typo", Key: []byte("k"), Val: []byte("v")}})` currently succeeds and writes `k=v`, even though the caller supplied an invalid operation.
+
+The issue appears in `KVdb.go`. In `encode`, the operation is assumed to be PUT unless its type is DEL:
+
+    var t uint8 = 1
+    if op.Type == "del" {
+        t = 2
+    }
+
+There is a similar issue in `decode`: every serialized type other than 2 is treated as PUT:
+
+    opType := "put"
+    if t == 2 {
+        opType = "del"
+    }
+
+Could you help us fix this without rewriting the file? Please make `encode` reject operation names other than "put" and "del", and make `decode` reject unknown type bytes. Add focused regression tests showing that an invalid batch returns an error without changing the database, and that malformed serialized data is rejected. Keep the existing file format and valid PUT/DEL behavior unchanged, and report the exact verification command and result.
+```
+
+## Prompts Used
 
 ---
 
-### Prompt 1
-* **Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)
-* **Approximate Time:** Hour 18 (2026-11-06 19:33 IST)
-* **Prompt:**
+### 1. Crash-safety audit
+**Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)  
+**Time:** Hour 18 (2026-11-06 19:33 IST)  
+**Prompt sent:**
 ```
 ROLE: You are a principal systems architect and low-level storage engineer specializing in crash-safe embedded databases (like SQLite/RocksDB storage layers). You value hard facts, strict correctness under POSIX failure semantics, and zero fluff.
 
@@ -34,20 +60,20 @@ Provide the final audited code adjustments, verification steps, and a clean brea
 
 ---
 
-### Prompt 2
-* **Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)
-* **Approximate Time:** Hour 19 (2026-11-06 19:43 IST)
-* **Prompt:**
+### 2. Running the project
+**Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)  
+**Time:** Hour 19 (2026-11-06 19:43 IST)  
+**Prompt sent:**
 ```
 how to run the project
 ```
 
 ---
 
-### Prompt 3
-* **Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)
-* **Approximate Time:** Hour 19 (2026-11-06 19:59 IST)
-* **Prompt:**
+### 3. Go command not found
+**Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)  
+**Time:** Hour 19 (2026-11-06 19:59 IST)  
+**Prompt sent:**
 ```
 go : The term 'go' is not recognized as the name of a cmdlet, function, 
 script file, or operable program. Check the spelling of the name, or if a 
@@ -62,50 +88,50 @@ At line:1 char:1
 
 ---
 
-### Prompt 4
-* **Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)
-* **Approximate Time:** Hour 20 (2026-11-06 20:05 IST)
-* **Prompt:**
+### 4. Running in PowerShell
+**Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)  
+**Time:** Hour 20 (2026-11-06 20:05 IST)  
+**Prompt sent:**
 ```
 i want to run thiis the powershell of antigravity
 ```
 
 ---
 
-### Prompt 5
-* **Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)
-* **Approximate Time:** Hour 20 (2026-11-06 20:08 IST)
-* **Prompt:**
+### 5. Add sample data
+**Tool:** Antigravity / Claude Sonnet 4.6 (Thinking)  
+**Time:** Hour 20 (2026-11-06 20:08 IST)  
+**Prompt sent:**
 ```
 add the all the data you can every where like 10 datas
 ```
 
 ---
 
-### Prompt 6
-* **Tool:** Antigravity / Gemini 3.8 Flash
-* **Approximate Time:** Hour 20 (2026-11-06 20:18 IST)
-* **Prompt:**
+### 6. Identify the metadata
+**Tool:** Antigravity / Gemini 3.8 Flash  
+**Time:** Hour 20 (2026-11-06 20:18 IST)  
+**Prompt sent:**
 ```
 which is the meta data in this
 ```
 
 ---
 
-### Prompt 7
-* **Tool:** Antigravity / Gemini 3.8 Flash
-* **Approximate Time:** Hour 20 (2026-11-06 20:21 IST)
-* **Prompt:**
+### 7. Create a metadata file
+**Tool:** Antigravity / Gemini 3.8 Flash  
+**Time:** Hour 20 (2026-11-06 20:21 IST)  
+**Prompt sent:**
 ```
 can create file for the metadata
 ```
 
 ---
 
-### Prompt 8
-* **Tool:** Antigravity / Gemini 3.8 Flash
-* **Approximate Time:** Hour 21 (2026-11-06 21:15 IST)
-* **Prompt:**
+### 8. Check the crash scenarios
+**Tool:** Antigravity / Gemini 3.8 Flash  
+**Time:** Hour 21 (2026-11-06 21:15 IST)  
+**Prompt sent:**
 ```
 ROLE: You are a principal systems architect specializing in crash-safe embedded key-value storage engines, transaction durability, and POSIX crash recovery semantics.
 
@@ -121,4 +147,8 @@ YOUR TASK:
 Audit our codebase, identify any failure points, and verify that our implementation strictly satisfies all 32 crash scenarios across Groups A through F below:
 [All 32 scenarios listed]
 ```
+
+---
+
+
 
