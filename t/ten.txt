@@ -1,0 +1,10 @@
+put bk1 v1
+put bk2 v2
+put bk3 v3
+put bk4 v4
+put bk5 v5
+put bk6 v6
+put bk7 v7
+put bk8 v8
+put bk9 v9
+put bk10 v10

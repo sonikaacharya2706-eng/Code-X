@@ -10,3 +10,9 @@
 *.db.tmp
 test_workspace_32/
 
+# Python artifacts
+*.py
+__pycache__/
+*.pyc
+
+

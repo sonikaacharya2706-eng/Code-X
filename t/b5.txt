@@ -1,0 +1,2 @@
+put X 1
+del X

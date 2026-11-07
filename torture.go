@@ -30,12 +30,13 @@ type torchOp struct {
 	val *string // nil for del
 }
 
-func oneRound(rnd *rand.Rand, path string, state map[string]string, counter *uint64) (bool, string) {
+func oneRound(rnd *rand.Rand, binPath, path string, state map[string]string, counter *uint64) (bool, string) {
 	ops := make(map[uint64]torchOp)
 	perKey := make(map[string][]uint64)
 	lastAck := make(map[string]int64)
+	var totalAcks uint64
 
-	cmd := exec.Command("go", "run", "KVdb.go", "serve", path)
+	cmd := exec.Command(binPath, "serve", path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return false, fmt.Sprintf("failed to get stdin pipe: %v", err)
@@ -65,6 +66,7 @@ func oneRound(rnd *rand.Rand, path string, state map[string]string, counter *uin
 					id, err := strconv.ParseUint(parts[1], 10, 64)
 					if err == nil {
 						mu.Lock()
+						totalAcks++
 						op, exists := ops[id]
 						if exists {
 							k := op.key
@@ -130,6 +132,16 @@ func oneRound(rnd *rand.Rand, path string, state map[string]string, counter *uin
 	_ = cmd.Wait()
 	_ = stdin.Close()
 	wg.Wait()
+
+	mu.Lock()
+	acksReceived := totalAcks
+	mu.Unlock()
+
+	// Guard: if zero ACKs were received, the database never actually promised anything.
+	// Either the process crashed before doing work, or it was never running.
+	if acksReceived == 0 {
+		return false, "no ACKs received, test invalid"
+	}
 
 	// Reopen DB and verify
 	db, err := NewDB(path, nil)
@@ -235,14 +247,15 @@ func oneRound(rnd *rand.Rand, path string, state map[string]string, counter *uin
 	}
 	db.mu.Unlock()
 
-	nAcked := len(lastAck)
-	return true, fmt.Sprintf("ok (acked-keys=%d)", nAcked)
+	nAckedKeys := len(lastAck)
+	return true, fmt.Sprintf("ok (total-acks=%d, acked-keys=%d)", acksReceived, nAckedKeys)
 }
 
 func main() {
 	args := os.Args[1:]
 	iters := 100
 	seed := 1
+	binPath := "./kvdb.exe"
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--iterations" && i+1 < len(args) {
@@ -255,6 +268,21 @@ func main() {
 				seed = n
 			}
 		}
+		if args[i] == "--bin" && i+1 < len(args) {
+			binPath = args[i+1]
+		}
+	}
+
+	// Resolve binary path to an absolute path so exec.Command does not reject it
+	// under Go 1.19+ relative-path security rules.
+	absBin, err := filepath.Abs(binPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resolving path for %q: %v\n", binPath, err)
+		os.Exit(1)
+	}
+	if _, err := os.Stat(absBin); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: database binary %q not found.\nPlease build it first with: go build -o kvdb.exe KVdb.go kvdb_cli.go\n", binPath)
+		os.Exit(1)
 	}
 
 	rnd := rand.New(rand.NewSource(int64(seed)))
@@ -271,7 +299,7 @@ func main() {
 	var counter uint64
 
 	for it := 0; it < iters; it++ {
-		ok, msg := oneRound(rnd, path, state, &counter)
+		ok, msg := oneRound(rnd, absBin, path, state, &counter)
 		fmt.Printf("iter %d: %s\n", it, msg)
 		if !ok {
 			fmt.Printf("FAIL, stopping. (seed=%d, iteration=%d)\n", seed, it)

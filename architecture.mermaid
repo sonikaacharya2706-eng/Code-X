@@ -1,0 +1,64 @@
+flowchart TB
+  subgraph CLIENT["Client layer: kvdb_cli.go"]
+    C1["CLI: put, get, del, batch, dump, check, open"]
+    C2["serve: reads stdin lines, prints ACK id only after success"]
+  end
+
+  subgraph WRITE["Write path: KVdb.go commit()"]
+    W0["encode ops into ONE record: len + crc32 + payload"]
+    W1["1. lock db.mu - single global mutex"]
+    W2["2. disk-full guard: size + len(rec) > max_bytes? return ErrDiskFull, write nothing"]
+    W3["3. WriteAt record at end of file (db.size)"]
+    W4["4. file.Sync() - fsync"]
+    W5["5. apply ops to in-memory map db.index, size += len"]
+    W6["6. unlock, return success, serve prints ACK"]
+    W0 --> W1 --> W2 --> W3 --> W4 --> W5 --> W6
+  end
+
+  subgraph MEM["In-memory index"]
+    M1["db.index: map key to value (copy of the file, rebuilt on open)"]
+  end
+
+  subgraph DISK["Single data file on disk"]
+    D0["Header: KVDB0001 (8 bytes)"]
+    D1["Record: payload_len 4B | crc32 4B | op_count 4B | ops"]
+    D2["Op: type 1B | key_len 2B | val_len 4B | key | value"]
+    D3["Next record appended at db.size ..."]
+    D0 --> D1 --> D2 --> D3
+  end
+
+  subgraph RECOVERY["Recovery: NewDB() then recover()"]
+    R0["delete leftover .tmp file"]
+    R1["file missing? create tmp with magic, Sync, Rename, fsyncDir"]
+    R2["open file, check magic KVDB0001"]
+    R3["read record: header, payload"]
+    R4{"short read or crc mismatch or bad decode?"}
+    R5["apply record to db.index, offset += 8 + len"]
+    R6["Truncate to last good offset, then Sync"]
+    R7["ready: db.size = offset"]
+    R0 --> R1 --> R2 --> R3 --> R4
+    R4 -- "no" --> R5 --> R3
+    R4 -- "yes, torn tail" --> R6 --> R7
+    R3 -- "clean EOF" --> R7
+  end
+
+  subgraph COMPACT["Compaction: Compact()"]
+    K1["lock db.mu"]
+    K2["write magic + live keys (batches of 1000) to path.tmp"]
+    K3["tmp.Sync()"]
+    K4["size > max_bytes? remove tmp, return ErrDiskFull"]
+    K5["Rename tmp over db.path, then fsyncDir"]
+    K6["open new fd, close old fd, db.size = newSize"]
+    K1 --> K2 --> K3 --> K4 --> K5 --> K6
+  end
+
+  C1 --> W0
+  C2 --> W0
+  C2 -. "compact command" .-> K1
+  W3 --> D1
+  W5 --> M1
+  D1 -. "replayed by" .-> R3
+  R5 --> M1
+  K2 -. "reads live keys" .-> M1
+  K5 --> DISK
+  C1 -. "get / dump read" .-> M1

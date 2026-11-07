@@ -15,6 +15,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -35,8 +36,15 @@ func serve(path string, maxBytes *int64) {
 	scanner.Buffer(buf, maxTokenSize)
 	for scanner.Scan() {
 		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
 		parts := strings.SplitN(line, " ", 4)
 		if len(parts) < 2 {
+			id := parts[0]
+			fmt.Printf("ERR %s malformed_line\n", id)
 			continue
 		}
 		id := parts[0]
@@ -45,15 +53,76 @@ func serve(path string, maxBytes *int64) {
 		var opErr error
 		switch cmd {
 		case "put":
-			if len(parts) >= 4 {
+			if len(parts) < 4 {
+				opErr = errors.New("missing_args: put requires <key> <value>")
+			} else {
 				opErr = db.Put([]byte(parts[2]), []byte(parts[3]))
 			}
 		case "del":
-			if len(parts) >= 3 {
+			if len(parts) < 3 {
+				opErr = errors.New("missing_args: del requires <key>")
+			} else {
 				opErr = db.Delete([]byte(parts[2]))
+			}
+		case "batch":
+			idx := strings.Index(line, cmd)
+			var rawOps string
+			if idx >= 0 {
+				rawOps = strings.TrimSpace(line[idx+len(cmd):])
+			}
+			if rawOps == "" {
+				opErr = errors.New("missing_args: batch requires at least one operation")
+				break
+			}
+			var batchOps []Op
+			for _, tok := range strings.Fields(rawOps) {
+				opParts := strings.SplitN(tok, ":", 3)
+				switch opParts[0] {
+				case "put":
+					if len(opParts) < 3 {
+						opErr = fmt.Errorf("malformed_op: %s (expected put:<key>:<val>)", tok)
+						break
+					}
+					k, err := url.PathUnescape(opParts[1])
+					if err != nil {
+						opErr = fmt.Errorf("invalid_escape in key: %v", err)
+						break
+					}
+					v, err := url.PathUnescape(opParts[2])
+					if err != nil {
+						opErr = fmt.Errorf("invalid_escape in val: %v", err)
+						break
+					}
+					batchOps = append(batchOps, Op{Type: "put", Key: []byte(k), Val: []byte(v)})
+				case "del":
+					if len(opParts) < 2 {
+						opErr = fmt.Errorf("malformed_op: %s (expected del:<key>)", tok)
+						break
+					}
+					k, err := url.PathUnescape(opParts[1])
+					if err != nil {
+						opErr = fmt.Errorf("invalid_escape in key: %v", err)
+						break
+					}
+					batchOps = append(batchOps, Op{Type: "del", Key: []byte(k), Val: nil})
+				default:
+					opErr = fmt.Errorf("unknown_batch_op: %s", opParts[0])
+				}
+				if opErr != nil {
+					break
+				}
+			}
+			if opErr == nil {
+				if len(batchOps) == 0 {
+					opErr = errors.New("empty_batch")
+				} else {
+					opErr = db.Batch(batchOps)
+				}
 			}
 		case "compact":
 			opErr = db.Compact()
+		default:
+			opErr = fmt.Errorf("unknown_cmd: %s", cmd)
 		}
 
 		if errors.Is(opErr, ErrDiskFull) {
